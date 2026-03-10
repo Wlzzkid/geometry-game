@@ -11,7 +11,10 @@
   const overlay = document.getElementById("overlay");
   const ovTitle = document.getElementById("ovTitle");
   const ovText = document.getElementById("ovText");
+  const ovSmall = document.getElementById("ovSmall");
   const btn = document.getElementById("btn");
+  const nextBtn = document.getElementById("nextBtn");
+  const menuOverlayBtn = document.getElementById("menuOverlayBtn");
   const levelList = document.getElementById("levelList");
 
   const menuBtn = document.getElementById("menuBtn");
@@ -23,27 +26,29 @@
   const H = canvas.height;
   const GROUND_Y = H * 0.80;
   const START_X = 180;
-  const CEIL_Y = 0;
+
+  const SAVE_BEST = "miniDashUltraBest";
+  const SAVE_COINS = "miniDashUltraCoins";
+  const SAVE_LEVEL_BESTS = "miniDashUltraLevelBests";
+  const SAVE_UNLOCKED = "miniDashUltraUnlocked";
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
 
-  let last = performance.now();
-  let selectedLevelIndex = 0;
-  let objects = [];
-  let particles = [];
-  let checkpoint = null;
-
-  const saveKey = "miniDashDeluxeBest2";
-  const coinKey = "miniDashDeluxeCoins2";
-  const levelBestKey = "miniDashDeluxeLevelBests";
-
-  let best = Number(localStorage.getItem(saveKey) || 0);
-  let totalCoins = Number(localStorage.getItem(coinKey) || 0);
-  let levelBests = JSON.parse(localStorage.getItem(levelBestKey) || "{}");
+  let best = Number(localStorage.getItem(SAVE_BEST) || 0);
+  let totalCoins = Number(localStorage.getItem(SAVE_COINS) || 0);
+  let levelBests = JSON.parse(localStorage.getItem(SAVE_LEVEL_BESTS) || "{}");
+  let unlockedCount = Number(localStorage.getItem(SAVE_UNLOCKED) || 1);
 
   bestEl.textContent = best;
   coinsEl.textContent = totalCoins;
+
+  let selectedLevelIndex = 0;
+  let last = performance.now();
+  let objects = [];
+  let particles = [];
+  let trail = [];
+  let checkpoint = null;
 
   const state = {
     running: false,
@@ -52,9 +57,11 @@
     win: false,
     practice: false,
     scrollX: 0,
-    beatWidth: 115,
+    beatWidth: 112,
     levelPixelLength: 0,
     flash: 0,
+    shake: 0,
+    currentSpeedMul: 1,
     coinsThisRun: 0
   };
 
@@ -75,120 +82,111 @@
     mini: false
   };
 
-  const CUBE_GRAVITY = 2550;
-  const JUMP_V =1300;
-  const MAX_FALL = 1600;
+  const BASE_CUBE_GRAVITY = 2550;
+  const BASE_JUMP_V = 920;
+  const MAX_FALL = 1700;
   const COYOTE = 0.09;
   const JUMP_BUFFER = 0.12;
 
-  const SHIP_THRUST = 1650;
-  const SHIP_GRAVITY = 1050;
-  const SHIP_MAX = 650;
+  const BASE_SHIP_THRUST = 1680;
+  const BASE_SHIP_GRAVITY = 1080;
+  const BASE_SHIP_MAX = 680;
 
   function yPreset(name) {
     if (name === "high") return H * 0.30;
-    if (name === "mid") return H * 0.52;
-    if (name === "low") return H * 0.67;
-
-    // reachable upside-down positions
-    if (name === "invLow") return 86;      // close to ceiling
-    if (name === "invMid") return 125;
-    if (name === "invHigh") return 165;
-
-    return H * 0.68;
+    if (name === "mid") return H * 0.50;
+    if (name === "low") return H * 0.66;
+    if (name === "invLow") return 74;
+    if (name === "invMid") return 112;
+    if (name === "invHigh") return 152;
+    return H * 0.66;
   }
 
   const LEVELS = [
     {
       name: "Starter Path",
+      difficulty: "Easy",
       bpm: 124,
       speed: 300,
+      lengthBeats: 100,
       background: ["#102034", "#070c16"],
-      lengthBeats: 96,
-      difficulty: "Easy",
-      description: "Intro level with clean jumps, one gravity section and a simple ship part.",
+      description: "A clear intro with coins, pads, gravity, ship and a clean finish.",
       sequence: [
         { beat: 5, type: "spike" },
         { beat: 8, type: "spike" },
-        { beat: 11, type: "coin", y: "mid" },
+        { beat: 10, type: "coin", y: "mid" },
         { beat: 12, type: "doubleSpike" },
         { beat: 16, type: "orb", y: "mid" },
-        { beat: 18, type: "spike" },
-        { beat: 22, type: "block", h: 54 },
-        { beat: 24, type: "checkpoint" },
-        { beat: 28, type: "doubleSpike" },
-        { beat: 32, type: "orb", y: "high" },
-
-        // fixed inverted section
-        { beat: 36, type: "gravityPortal", y: "mid" },
+        { beat: 20, type: "pad" },
+        { beat: 24, type: "block", h: 56 },
+        { beat: 28, type: "checkpoint" },
+        { beat: 32, type: "doubleSpike" },
+        { beat: 36, type: "gravityPortal" },
         { beat: 39, type: "spikeCeil" },
         { beat: 41, type: "orb", y: "invMid" },
         { beat: 44, type: "spikeCeil" },
-        { beat: 48, type: "gravityPortal", y: "mid" },
-
-        { beat: 52, type: "shipPortal" },
-        { beat: 56, type: "shipGateTop" },
-        { beat: 60, type: "shipGateBottom" },
-        { beat: 64, type: "coin", y: "high" },
-        { beat: 68, type: "shipGateTop" },
-        { beat: 72, type: "shipGateBottom" },
-        { beat: 76, type: "cubePortal" },
-        { beat: 80, type: "doubleJumpPickup" },
-        { beat: 84, type: "doubleSpike" },
-        { beat: 88, type: "orb", y: "mid" },
-        { beat: 92, type: "tripleSpike" }
+        { beat: 48, type: "gravityPortal" },
+        { beat: 54, type: "shipPortal" },
+        { beat: 58, type: "shipGateTop" },
+        { beat: 62, type: "shipGateBottom" },
+        { beat: 66, type: "coin", y: "high" },
+        { beat: 70, type: "shipGateTop" },
+        { beat: 74, type: "shipGateBottom" },
+        { beat: 78, type: "cubePortal" },
+        { beat: 82, type: "doubleJumpPickup" },
+        { beat: 86, type: "doubleSpike" },
+        { beat: 90, type: "orb", y: "mid" },
+        { beat: 94, type: "tripleSpike" }
       ]
     },
     {
       name: "Circuit Flow",
-      bpm: 132,
-      speed: 325,
-      background: ["#1a1633", "#0b0817"],
-      lengthBeats: 112,
       difficulty: "Medium",
-      description: "More precise timing, speed changes and a longer but readable ship section.",
+      bpm: 132,
+      speed: 326,
+      lengthBeats: 116,
+      background: ["#1a1633", "#0b0817"],
+      description: "More speed, more gravity, more ship, still readable.",
       sequence: [
         { beat: 5, type: "spike" },
-        { beat: 7, type: "doubleSpike" },
+        { beat: 8, type: "doubleSpike" },
         { beat: 12, type: "orb", y: "mid" },
         { beat: 16, type: "block", h: 62 },
         { beat: 18, type: "coin", y: "high" },
-        { beat: 20, type: "doubleSpike" },
-        { beat: 24, type: "checkpoint" },
-
-        { beat: 27, type: "gravityPortal", y: "mid" },
-        { beat: 30, type: "spikeCeil" },
-        { beat: 33, type: "orb", y: "invMid" },
-        { beat: 36, type: "spikeCeil" },
-        { beat: 40, type: "gravityPortal", y: "mid" },
-
-        { beat: 44, type: "speedPortalFast" },
-        { beat: 48, type: "shipPortal" },
-        { beat: 52, type: "shipGateTop" },
-        { beat: 56, type: "shipGateBottom" },
-        { beat: 60, type: "shipGateTop" },
-        { beat: 64, type: "shipGateBottom" },
+        { beat: 22, type: "pad" },
+        { beat: 26, type: "checkpoint" },
+        { beat: 30, type: "gravityPortal" },
+        { beat: 33, type: "spikeCeil" },
+        { beat: 36, type: "orb", y: "invMid" },
+        { beat: 40, type: "spikeCeil" },
+        { beat: 44, type: "gravityPortal" },
+        { beat: 48, type: "speedPortalFast" },
+        { beat: 52, type: "shipPortal" },
+        { beat: 56, type: "shipGateTop" },
+        { beat: 60, type: "shipGateBottom" },
+        { beat: 64, type: "shipGateTop" },
         { beat: 68, type: "coin", y: "mid" },
-        { beat: 72, type: "shipGateTop" },
-        { beat: 76, type: "shipGateBottom" },
-        { beat: 80, type: "cubePortal" },
-        { beat: 84, type: "speedPortalNormal" },
-        { beat: 86, type: "doubleJumpPickup" },
-        { beat: 90, type: "tripleSpike" },
-        { beat: 95, type: "orb", y: "high" },
-        { beat: 100, type: "doubleSpike" },
+        { beat: 72, type: "shipGateBottom" },
+        { beat: 76, type: "shipGateTop" },
+        { beat: 80, type: "shipGateBottom" },
+        { beat: 84, type: "cubePortal" },
+        { beat: 88, type: "speedPortalNormal" },
+        { beat: 92, type: "doubleJumpPickup" },
+        { beat: 96, type: "tripleSpike" },
+        { beat: 100, type: "orb", y: "high" },
         { beat: 104, type: "checkpoint" },
-        { beat: 108, type: "tripleSpike" }
+        { beat: 108, type: "tripleSpike" },
+        { beat: 112, type: "pad" }
       ]
     },
     {
       name: "Neon Drop",
+      difficulty: "Hard",
       bpm: 140,
       speed: 348,
+      lengthBeats: 132,
       background: ["#1e0f1f", "#09060e"],
-      lengthBeats: 126,
-      difficulty: "Hard",
-      description: "Faster flow, mini mode and cleaner upside-down routes.",
+      description: "Mini sections, tighter flow and faster gravity swaps.",
       sequence: [
         { beat: 5, type: "spike" },
         { beat: 8, type: "doubleSpike" },
@@ -196,94 +194,93 @@
         { beat: 16, type: "block", h: 68 },
         { beat: 20, type: "tripleSpike" },
         { beat: 24, type: "checkpoint" },
-
-        { beat: 28, type: "gravityPortal", y: "mid" },
+        { beat: 28, type: "gravityPortal" },
         { beat: 31, type: "spikeCeil" },
         { beat: 34, type: "orb", y: "invMid" },
         { beat: 38, type: "spikeCeil" },
-        { beat: 42, type: "gravityPortal", y: "mid" },
-
+        { beat: 42, type: "gravityPortal" },
         { beat: 46, type: "coin", y: "high" },
-        { beat: 48, type: "miniPortal" },
-        { beat: 52, type: "doubleSpike" },
-        { beat: 56, type: "orb", y: "mid" },
-        { beat: 60, type: "shipPortal" },
-        { beat: 64, type: "shipGateTop" },
-        { beat: 67, type: "shipGateBottom" },
-        { beat: 70, type: "shipGateTop" },
-        { beat: 73, type: "shipGateBottom" },
-        { beat: 76, type: "coin", y: "mid" },
-        { beat: 79, type: "shipGateTop" },
-        { beat: 82, type: "shipGateBottom" },
-        { beat: 86, type: "cubePortal" },
-        { beat: 89, type: "miniPortal" },
-        { beat: 92, type: "doubleJumpPickup" },
-        { beat: 96, type: "tripleSpike" },
-        { beat: 101, type: "orb", y: "high" },
-        { beat: 106, type: "gravityPortal", y: "mid" },
-        { beat: 109, type: "spikeCeil" },
-        { beat: 112, type: "orb", y: "invLow" },
-        { beat: 116, type: "gravityPortal", y: "mid" },
-        { beat: 120, type: "tripleSpike" }
+        { beat: 50, type: "miniPortal" },
+        { beat: 54, type: "doubleSpike" },
+        { beat: 58, type: "orb", y: "mid" },
+        { beat: 62, type: "shipPortal" },
+        { beat: 66, type: "shipGateTop" },
+        { beat: 69, type: "shipGateBottom" },
+        { beat: 72, type: "shipGateTop" },
+        { beat: 75, type: "shipGateBottom" },
+        { beat: 78, type: "coin", y: "mid" },
+        { beat: 82, type: "shipGateTop" },
+        { beat: 86, type: "shipGateBottom" },
+        { beat: 90, type: "cubePortal" },
+        { beat: 94, type: "miniPortal" },
+        { beat: 98, type: "doubleJumpPickup" },
+        { beat: 102, type: "tripleSpike" },
+        { beat: 106, type: "orb", y: "high" },
+        { beat: 110, type: "gravityPortal" },
+        { beat: 113, type: "spikeCeil" },
+        { beat: 116, type: "orb", y: "invLow" },
+        { beat: 120, type: "gravityPortal" },
+        { beat: 124, type: "pad" },
+        { beat: 128, type: "tripleSpike" }
       ]
     },
     {
       name: "Pulse Reactor",
+      difficulty: "Hard+",
       bpm: 146,
       speed: 370,
+      lengthBeats: 146,
       background: ["#0c2230", "#071018"],
-      lengthBeats: 140,
-      difficulty: "Hard+",
-      description: "Longer level with more speed shifts, practice checkpoints and coin routes.",
+      description: "Longer and faster with more lane changes and denser ship.",
       sequence: [
         { beat: 5, type: "spike" },
         { beat: 8, type: "doubleSpike" },
         { beat: 12, type: "orb", y: "mid" },
         { beat: 16, type: "block", h: 58 },
-        { beat: 18, type: "coin", y: "high" },
-        { beat: 20, type: "tripleSpike" },
+        { beat: 20, type: "coin", y: "high" },
         { beat: 24, type: "checkpoint" },
         { beat: 28, type: "speedPortalFast" },
-        { beat: 30, type: "gravityPortal", y: "mid" },
-        { beat: 33, type: "spikeCeil" },
-        { beat: 36, type: "orb", y: "invMid" },
-        { beat: 40, type: "spikeCeil" },
-        { beat: 44, type: "gravityPortal", y: "mid" },
-        { beat: 48, type: "shipPortal" },
-        { beat: 52, type: "shipGateTop" },
-        { beat: 55, type: "shipGateBottom" },
-        { beat: 58, type: "shipGateTop" },
-        { beat: 61, type: "shipGateBottom" },
-        { beat: 64, type: "coin", y: "mid" },
-        { beat: 67, type: "shipGateTop" },
-        { beat: 70, type: "shipGateBottom" },
-        { beat: 74, type: "shipGateTop" },
-        { beat: 78, type: "cubePortal" },
-        { beat: 82, type: "miniPortal" },
-        { beat: 86, type: "doubleSpike" },
-        { beat: 90, type: "orb", y: "mid" },
-        { beat: 94, type: "doubleJumpPickup" },
-        { beat: 98, type: "tripleSpike" },
-        { beat: 102, type: "checkpoint" },
-        { beat: 106, type: "speedPortalNormal" },
-        { beat: 110, type: "gravityPortal", y: "mid" },
-        { beat: 113, type: "spikeCeil" },
-        { beat: 116, type: "orb", y: "invLow" },
-        { beat: 120, type: "spikeCeil" },
-        { beat: 124, type: "gravityPortal", y: "mid" },
-        { beat: 128, type: "coin", y: "high" },
-        { beat: 132, type: "tripleSpike" },
-        { beat: 136, type: "orb", y: "mid" }
+        { beat: 32, type: "gravityPortal" },
+        { beat: 35, type: "spikeCeil" },
+        { beat: 38, type: "orb", y: "invMid" },
+        { beat: 42, type: "spikeCeil" },
+        { beat: 46, type: "gravityPortal" },
+        { beat: 50, type: "shipPortal" },
+        { beat: 54, type: "shipGateTop" },
+        { beat: 57, type: "shipGateBottom" },
+        { beat: 60, type: "shipGateTop" },
+        { beat: 63, type: "shipGateBottom" },
+        { beat: 66, type: "coin", y: "mid" },
+        { beat: 70, type: "shipGateTop" },
+        { beat: 73, type: "shipGateBottom" },
+        { beat: 76, type: "shipGateTop" },
+        { beat: 80, type: "cubePortal" },
+        { beat: 84, type: "miniPortal" },
+        { beat: 88, type: "doubleSpike" },
+        { beat: 92, type: "pad" },
+        { beat: 96, type: "doubleJumpPickup" },
+        { beat: 100, type: "tripleSpike" },
+        { beat: 104, type: "checkpoint" },
+        { beat: 108, type: "speedPortalNormal" },
+        { beat: 112, type: "gravityPortal" },
+        { beat: 115, type: "spikeCeil" },
+        { beat: 118, type: "orb", y: "invLow" },
+        { beat: 122, type: "spikeCeil" },
+        { beat: 126, type: "gravityPortal" },
+        { beat: 130, type: "coin", y: "high" },
+        { beat: 134, type: "tripleSpike" },
+        { beat: 138, type: "orb", y: "mid" },
+        { beat: 142, type: "pad" }
       ]
     },
     {
       name: "Sky Fracture",
+      difficulty: "Very Hard",
       bpm: 152,
       speed: 388,
+      lengthBeats: 160,
       background: ["#241028", "#0b0710"],
-      lengthBeats: 154,
-      difficulty: "Very Hard",
-      description: "Final level with mini sections, multiple gravity flips and the tightest ship route.",
+      description: "Final level with the densest routes, but still fixed for upside-down reachability.",
       sequence: [
         { beat: 5, type: "spike" },
         { beat: 8, type: "doubleSpike" },
@@ -294,37 +291,38 @@
         { beat: 28, type: "miniPortal" },
         { beat: 32, type: "doubleSpike" },
         { beat: 36, type: "orb", y: "mid" },
-        { beat: 40, type: "gravityPortal", y: "mid" },
+        { beat: 40, type: "gravityPortal" },
         { beat: 43, type: "spikeCeil" },
         { beat: 46, type: "orb", y: "invMid" },
         { beat: 50, type: "spikeCeil" },
         { beat: 54, type: "orb", y: "invLow" },
-        { beat: 58, type: "gravityPortal", y: "mid" },
+        { beat: 58, type: "gravityPortal" },
         { beat: 62, type: "coin", y: "high" },
-        { beat: 64, type: "speedPortalFast" },
-        { beat: 68, type: "shipPortal" },
-        { beat: 72, type: "shipGateTop" },
-        { beat: 75, type: "shipGateBottom" },
-        { beat: 78, type: "shipGateTop" },
-        { beat: 81, type: "shipGateBottom" },
-        { beat: 84, type: "shipGateTop" },
-        { beat: 87, type: "shipGateBottom" },
-        { beat: 90, type: "coin", y: "mid" },
-        { beat: 93, type: "shipGateTop" },
-        { beat: 96, type: "shipGateBottom" },
-        { beat: 100, type: "cubePortal" },
-        { beat: 104, type: "speedPortalNormal" },
-        { beat: 108, type: "doubleJumpPickup" },
-        { beat: 112, type: "tripleSpike" },
-        { beat: 117, type: "orb", y: "high" },
-        { beat: 122, type: "gravityPortal", y: "mid" },
-        { beat: 125, type: "spikeCeil" },
-        { beat: 128, type: "orb", y: "invLow" },
-        { beat: 132, type: "spikeCeil" },
-        { beat: 136, type: "gravityPortal", y: "mid" },
-        { beat: 140, type: "checkpoint" },
-        { beat: 144, type: "coin", y: "mid" },
-        { beat: 148, type: "tripleSpike" }
+        { beat: 66, type: "speedPortalFast" },
+        { beat: 70, type: "shipPortal" },
+        { beat: 74, type: "shipGateTop" },
+        { beat: 77, type: "shipGateBottom" },
+        { beat: 80, type: "shipGateTop" },
+        { beat: 83, type: "shipGateBottom" },
+        { beat: 86, type: "shipGateTop" },
+        { beat: 89, type: "shipGateBottom" },
+        { beat: 92, type: "coin", y: "mid" },
+        { beat: 96, type: "shipGateTop" },
+        { beat: 99, type: "shipGateBottom" },
+        { beat: 104, type: "cubePortal" },
+        { beat: 108, type: "speedPortalNormal" },
+        { beat: 112, type: "doubleJumpPickup" },
+        { beat: 116, type: "tripleSpike" },
+        { beat: 120, type: "orb", y: "high" },
+        { beat: 124, type: "gravityPortal" },
+        { beat: 127, type: "spikeCeil" },
+        { beat: 130, type: "orb", y: "invLow" },
+        { beat: 134, type: "spikeCeil" },
+        { beat: 138, type: "gravityPortal" },
+        { beat: 142, type: "checkpoint" },
+        { beat: 146, type: "coin", y: "mid" },
+        { beat: 150, type: "pad" },
+        { beat: 154, type: "tripleSpike" }
       ]
     }
   ];
@@ -333,24 +331,35 @@
     return LEVELS[selectedLevelIndex];
   }
 
-  function getLevelBest() {
-    return Number(levelBests[getLevel().name] || 0);
+  function getLevelBest(name = getLevel().name) {
+    return Number(levelBests[name] || 0);
   }
 
-  function setLevelBest(value) {
-    levelBests[getLevel().name] = Math.max(getLevelBest(), value);
-    localStorage.setItem(levelBestKey, JSON.stringify(levelBests));
+  function setLevelBest(name, value) {
+    levelBests[name] = Math.max(getLevelBest(name), value);
+    localStorage.setItem(SAVE_LEVEL_BESTS, JSON.stringify(levelBests));
   }
 
-  function updateHudCoins() {
+  function updateCoinsHud() {
     coinsEl.textContent = totalCoins;
   }
 
-  function showOverlay(title, text, buttonLabel = "Start") {
+  function showOverlay(title, text, startLabel = "Start", options = {}) {
     ovTitle.textContent = title;
     ovText.innerHTML = text;
-    btn.textContent = buttonLabel;
-    buildLevelList();
+    ovSmall.textContent = options.small || "Features: ship mode, gravity flip, mini mode, speed portals, coins, checkpoints, practice mode.";
+    btn.textContent = startLabel;
+    btn.classList.remove("hidden");
+
+    if (options.showNext) nextBtn.classList.remove("hidden");
+    else nextBtn.classList.add("hidden");
+
+    if (options.showMenu) menuOverlayBtn.classList.remove("hidden");
+    else menuOverlayBtn.classList.add("hidden");
+
+    if (options.hideStart) btn.classList.add("hidden");
+
+    buildLevelList(options.hideLevelList === true);
     overlay.classList.remove("hidden");
   }
 
@@ -358,18 +367,29 @@
     overlay.classList.add("hidden");
   }
 
-  function buildLevelList() {
+  function isUnlocked(index) {
+    return index < unlockedCount;
+  }
+
+  function buildLevelList(hidden = false) {
     levelList.innerHTML = "";
+    if (hidden) {
+      levelList.classList.add("hidden");
+      return;
+    }
+    levelList.classList.remove("hidden");
+
     LEVELS.forEach((lvl, i) => {
-      const bestForLevel = Number(levelBests[lvl.name] || 0);
+      const unlocked = isUnlocked(i);
       const el = document.createElement("div");
-      el.className = "levelItem" + (i === selectedLevelIndex ? " active" : "");
+      el.className = "levelItem" + (i === selectedLevelIndex ? " active" : "") + (!unlocked ? " locked" : "");
       el.innerHTML = `
-        <div class="name">${lvl.name} • ${lvl.difficulty}</div>
+        <div class="name">${lvl.name} • ${lvl.difficulty}${unlocked ? "" : " • Locked"}</div>
         <div class="meta">${lvl.description}</div>
-        <div class="meta">Best: ${bestForLevel}% • Speed: ${lvl.speed}</div>
+        <div class="meta">Best: ${getLevelBest(lvl.name)}% • Speed: ${lvl.speed}</div>
       `;
       el.addEventListener("click", () => {
+        if (!unlocked) return;
         selectedLevelIndex = i;
         levelNameEl.textContent = getLevel().name;
         buildLevelList();
@@ -379,10 +399,15 @@
     });
   }
 
+  function applyMini(isMini) {
+    player.mini = isMini;
+    player.w = isMini ? 30 : 42;
+    player.h = isMini ? 30 : 42;
+    player.y = clamp(player.y, 0, GROUND_Y - player.h);
+  }
+
   function resetPlayer() {
-    player.mini = false;
-    player.w = 42;
-    player.h = 42;
+    applyMini(false);
     player.x = START_X;
     player.y = GROUND_Y - player.h;
     player.vy = 0;
@@ -397,15 +422,22 @@
     modeEl.textContent = player.mode;
   }
 
-  function makePortalY(item) {
-    if (item.y === "top") return 55;
-    if (item.y === "bottom") return GROUND_Y - 150;
-    return H * 0.5 - 46;
+  function currentPercent() {
+    return clamp(Math.floor((state.scrollX / state.levelPixelLength) * 100), 0, 100);
+  }
+
+  function expandedPortalHitbox(o) {
+    return {
+      x: o.x - state.scrollX - 12,
+      y: o.y - 10,
+      w: o.w + 24,
+      h: o.h + 20
+    };
   }
 
   function buildObjects() {
-    const level = getLevel();
     objects = [];
+    const level = getLevel();
 
     for (const item of level.sequence) {
       const x = item.beat * state.beatWidth + W * 0.9;
@@ -423,34 +455,36 @@
         objects.push({ kind: "block", x, y: GROUND_Y - item.h, w: 56, h: item.h, used: false });
       } else if (item.type === "orb") {
         objects.push({ kind: "orb", x, y: yPreset(item.y), r: 13, used: false });
+      } else if (item.type === "coin") {
+        objects.push({ kind: "coin", x, y: yPreset(item.y), r: 10, used: false });
       } else if (item.type === "gravityPortal") {
-        objects.push({ kind: "gravityPortal", x, y: makePortalY(item), w: 30, h: 92, used: false });
+        objects.push({ kind: "gravityPortal", x, y: H * 0.5 - 70, w: 34, h: 140, used: false });
       } else if (item.type === "shipPortal") {
-        objects.push({ kind: "shipPortal", x, y: H * 0.5 - 50, w: 30, h: 100, used: false });
+        objects.push({ kind: "shipPortal", x, y: H * 0.5 - 74, w: 34, h: 148, used: false });
       } else if (item.type === "cubePortal") {
-        objects.push({ kind: "cubePortal", x, y: H * 0.5 - 50, w: 30, h: 100, used: false });
+        objects.push({ kind: "cubePortal", x, y: H * 0.5 - 74, w: 34, h: 148, used: false });
+      } else if (item.type === "miniPortal") {
+        objects.push({ kind: "miniPortal", x, y: H * 0.5 - 60, w: 30, h: 120, used: false });
+      } else if (item.type === "speedPortalFast") {
+        objects.push({ kind: "speedPortalFast", x, y: H * 0.5 - 60, w: 30, h: 120, used: false });
+      } else if (item.type === "speedPortalNormal") {
+        objects.push({ kind: "speedPortalNormal", x, y: H * 0.5 - 60, w: 30, h: 120, used: false });
       } else if (item.type === "doubleJumpPickup") {
         objects.push({ kind: "doubleJumpPickup", x, y: H * 0.58, r: 12, used: false });
+      } else if (item.type === "pad") {
+        objects.push({ kind: "pad", x, y: GROUND_Y - 10, w: 38, h: 10, used: false });
+      } else if (item.type === "checkpoint") {
+        objects.push({ kind: "checkpoint", x, y: GROUND_Y - 90, w: 18, h: 90, used: false });
       } else if (item.type === "spikeCeil") {
         objects.push({ kind: "spikeCeil", x, y: 0, w: 36, h: 34, used: false });
       } else if (item.type === "shipGateTop") {
         objects.push({ kind: "shipGateTop", x, y: 0, w: 50, h: 72, used: false });
       } else if (item.type === "shipGateBottom") {
         objects.push({ kind: "shipGateBottom", x, y: GROUND_Y, w: 50, h: 72, used: false });
-      } else if (item.type === "coin") {
-        objects.push({ kind: "coin", x, y: yPreset(item.y), r: 10, used: false });
-      } else if (item.type === "checkpoint") {
-        objects.push({ kind: "checkpoint", x, y: GROUND_Y - 90, w: 18, h: 90, used: false });
-      } else if (item.type === "miniPortal") {
-        objects.push({ kind: "miniPortal", x, y: H * 0.5 - 42, w: 28, h: 84, used: false });
-      } else if (item.type === "speedPortalFast") {
-        objects.push({ kind: "speedPortalFast", x, y: H * 0.5 - 42, w: 28, h: 84, used: false });
-      } else if (item.type === "speedPortalNormal") {
-        objects.push({ kind: "speedPortalNormal", x, y: H * 0.5 - 42, w: 28, h: 84, used: false });
       }
     }
 
-    state.levelPixelLength = getLevel().lengthBeats * state.beatWidth + W;
+    state.levelPixelLength = level.lengthBeats * state.beatWidth + W;
   }
 
   function resetLevel(keepOverlay = true) {
@@ -458,22 +492,22 @@
     state.beatWidth = clamp(6100 / level.bpm, 95, 125);
     state.scrollX = 0;
     state.flash = 0;
+    state.shake = 0;
+    state.currentSpeedMul = 1;
     state.running = false;
     state.paused = false;
     state.gameOver = false;
     state.win = false;
     state.coinsThisRun = 0;
     checkpoint = null;
+    objects = [];
     particles = [];
-    levelNameEl.textContent = level.name;
-    scoreEl.textContent = "0";
+    trail = [];
     resetPlayer();
     buildObjects();
+    levelNameEl.textContent = level.name;
+    scoreEl.textContent = "0";
     if (!keepOverlay) draw();
-  }
-
-  function currentPercent() {
-    return clamp(Math.floor((state.scrollX / state.levelPixelLength) * 100), 0, 100);
   }
 
   function saveCheckpoint() {
@@ -484,27 +518,17 @@
       gravity: player.gravity,
       mode: player.mode,
       mini: player.mini,
+      speedMul: state.currentSpeedMul,
       coinsThisRun: state.coinsThisRun,
       objectStates: objects.map(o => !!o.used)
     };
-  }
-
-  function applyMini(isMini) {
-    player.mini = isMini;
-    if (isMini) {
-      player.w = 30;
-      player.h = 30;
-    } else {
-      player.w = 42;
-      player.h = 42;
-    }
-    player.y = clamp(player.y, 0, GROUND_Y - player.h);
   }
 
   function loadCheckpoint() {
     if (!checkpoint) return false;
 
     state.scrollX = checkpoint.scrollX;
+    state.currentSpeedMul = checkpoint.speedMul;
     player.y = checkpoint.y;
     player.vy = checkpoint.vy;
     player.gravity = checkpoint.gravity;
@@ -514,8 +538,8 @@
     player.shipThrust = false;
     player.rotation = 0;
     player.x = START_X;
-    modeEl.textContent = player.mode;
     state.coinsThisRun = checkpoint.coinsThisRun;
+    modeEl.textContent = player.mode;
 
     objects.forEach((o, i) => {
       o.used = checkpoint.objectStates[i];
@@ -538,61 +562,38 @@
     last = performance.now();
   }
 
+  function goToMainMenu() {
+    state.running = false;
+    state.paused = false;
+    showOverlay(
+      "Mini Dash Ultra",
+      `Pick a level and press start.<br>Total coins: ${totalCoins}<br>Global best: ${best}%<br>Unlocked levels: ${unlockedCount}/${LEVELS.length}`,
+      "Start",
+      { small: "Clear levels to unlock the next one." }
+    );
+  }
+
+  function goToNextLevel() {
+    if (selectedLevelIndex < LEVELS.length - 1 && isUnlocked(selectedLevelIndex + 1)) {
+      selectedLevelIndex++;
+      resetLevel();
+      startGame();
+    } else {
+      goToMainMenu();
+    }
+  }
+
   function spawnDeathParticles() {
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 24; i++) {
       particles.push({
         x: player.x + player.w / 2,
         y: player.y + player.h / 2,
-        vx: (Math.random() - 0.5) * 380,
-        vy: (Math.random() - 0.5) * 380,
+        vx: (Math.random() - 0.5) * 420,
+        vy: (Math.random() - 0.5) * 420,
         life: 0.7 + Math.random() * 0.4,
-        size: 3 + Math.random() * 5
+        size: 3 + Math.random() * 5,
       });
     }
-  }
-
-  function finishRun(win) {
-    const score = currentPercent();
-    best = Math.max(best, score);
-    localStorage.setItem(saveKey, best);
-    bestEl.textContent = best;
-    setLevelBest(score);
-
-    if (win) {
-      showOverlay(
-        "Level Complete",
-        `${getLevel().name} • ${score}%<br>Coins this run: ${state.coinsThisRun}<br>Level best: ${getLevelBest()}%`,
-        "Play Again"
-      );
-    } else {
-      showOverlay(
-        "Game Over",
-        `${getLevel().name} • ${score}%<br>Level best: ${getLevelBest()}%`,
-        "Retry"
-      );
-    }
-  }
-
-  function endGame(win) {
-    if (win) {
-      state.running = false;
-      state.gameOver = false;
-      state.win = true;
-      finishRun(true);
-      return;
-    }
-
-    spawnDeathParticles();
-
-    if (state.practice && checkpoint) {
-      loadCheckpoint();
-      return;
-    }
-
-    state.running = false;
-    state.gameOver = true;
-    state.win = false;
-    finishRun(false);
   }
 
   function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -617,8 +618,8 @@
     const ry = py + shrink;
     const rw = pw - shrink * 2;
     const rh = ph - shrink * 2;
-
     const boxY = upsideDown ? sy : sy - sh;
+
     if (!rectsOverlap(rx, ry, rw, rh, sx, boxY, sw, sh)) return false;
 
     const tri = upsideDown
@@ -641,14 +642,40 @@
     return false;
   }
 
+  function currentJumpVelocity() {
+    let v = BASE_JUMP_V;
+    if (player.mini) v *= 0.90;
+    if (player.gravity === -1) v *= 1.18;
+    return v;
+  }
+
+  function currentCubeGravity() {
+    let g = BASE_CUBE_GRAVITY;
+    if (player.mini) g *= 0.92;
+    if (player.gravity === -1) g *= 0.94;
+    return g;
+  }
+
+  function currentShipPhysics() {
+    let thrust = BASE_SHIP_THRUST;
+    let gravity = BASE_SHIP_GRAVITY;
+    let max = BASE_SHIP_MAX;
+    if (player.mini) {
+      thrust *= 0.92;
+      gravity *= 0.92;
+      max *= 0.9;
+    }
+    return { thrust, gravity, max };
+  }
+
   function findOrbInRange() {
     for (const o of objects) {
       if (o.kind !== "orb" || o.used) continue;
       const sx = o.x - state.scrollX;
       const dx = Math.abs((player.x + player.w / 2) - sx);
       const dy = Math.abs((player.y + player.h / 2) - o.y);
-      const rangeX = player.mini ? 36 : 44;
-      const rangeY = player.mini ? 34 : 42;
+      const rangeX = player.mini ? 40 : 48;
+      const rangeY = player.mini ? 38 : 46;
       if (dx < rangeX && dy < rangeY) return o;
     }
     return null;
@@ -671,16 +698,16 @@
     const orb = findOrbInRange();
     if (orb) {
       orb.used = true;
-      const power = player.mini ? 0.98 : 1.05;
-      player.vy = -JUMP_V * power * player.gravity;
+      player.vy = -currentJumpVelocity() * 1.06 * player.gravity;
       player.onGround = false;
-      state.flash = 0.5;
+      state.flash = 0.55;
+      state.shake = 6;
       return;
     }
 
     if (!player.onGround && player.doubleJumpAvailable) {
       player.doubleJumpAvailable = false;
-      player.vy = -JUMP_V * 0.88 * player.gravity;
+      player.vy = -currentJumpVelocity() * 0.9 * player.gravity;
       return;
     }
 
@@ -691,19 +718,11 @@
     if (player.mode === "ship") player.shipThrust = false;
   }
 
-  function currentGravityScale() {
-    return player.mini ? 0.92 : 1;
-  }
-
-  function currentJumpPower() {
-    return player.mini ? 0.90 : 1;
-  }
-
   function updateCube(dt) {
     player.coyote = Math.max(0, player.coyote - dt);
     player.jumpBuffer = Math.max(0, player.jumpBuffer - dt);
 
-    player.vy += CUBE_GRAVITY * currentGravityScale() * player.gravity * dt;
+    player.vy += currentCubeGravity() * player.gravity * dt;
     player.vy = clamp(player.vy, -MAX_FALL, MAX_FALL);
     player.y += player.vy * dt;
 
@@ -716,8 +735,8 @@
         touchingSurface = true;
       }
     } else {
-      if (player.y <= CEIL_Y) {
-        player.y = CEIL_Y;
+      if (player.y <= 0) {
+        player.y = 0;
         player.vy = 0;
         touchingSurface = true;
       }
@@ -734,24 +753,22 @@
       player.jumpBuffer = 0;
       player.coyote = 0;
       player.onGround = false;
-      player.vy = -JUMP_V * currentJumpPower() * player.gravity;
+      player.vy = -currentJumpVelocity() * player.gravity;
     }
 
     player.rotation = lerp(player.rotation, clamp(player.vy / 900, -1, 1) * 0.75, 0.2);
   }
 
   function updateShip(dt) {
-    const thrust = player.mini ? SHIP_THRUST * 0.92 : SHIP_THRUST;
-    const grav = player.mini ? SHIP_GRAVITY * 0.92 : SHIP_GRAVITY;
-    const maxShip = player.mini ? SHIP_MAX * 0.9 : SHIP_MAX;
+    const phys = currentShipPhysics();
 
     if (player.shipThrust) {
-      player.vy -= thrust * player.gravity * dt;
+      player.vy -= phys.thrust * player.gravity * dt;
     } else {
-      player.vy += grav * player.gravity * dt;
+      player.vy += phys.gravity * player.gravity * dt;
     }
 
-    player.vy = clamp(player.vy, -maxShip, maxShip);
+    player.vy = clamp(player.vy, -phys.max, phys.max);
     player.y += player.vy * dt;
 
     if (player.y < 0) {
@@ -771,20 +788,85 @@
       p.life -= dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      p.vy += 500 * dt;
+      p.vy += 520 * dt;
     }
     particles = particles.filter(p => p.life > 0);
   }
 
-  function currentLevelSpeed() {
-    const level = getLevel();
-    let mult = 1;
-    for (const o of objects) {
-      if ((o.kind === "speedPortalFast" || o.kind === "speedPortalNormal") && o.used) {
-        mult = o.kind === "speedPortalFast" ? 1.18 : 1;
-      }
+  function updateTrail() {
+    trail.push({
+      x: player.x + player.w / 2,
+      y: player.y + player.h / 2,
+      size: player.mini ? 8 : 12,
+      life: 0.34
+    });
+    if (trail.length > 18) trail.shift();
+    for (const t of trail) t.life -= 0.016;
+    trail = trail.filter(t => t.life > 0);
+  }
+
+  function completeLevel() {
+    const score = currentPercent();
+    best = Math.max(best, score);
+    bestEl.textContent = best;
+    localStorage.setItem(SAVE_BEST, best);
+
+    setLevelBest(getLevel().name, score);
+
+    if (selectedLevelIndex + 1 > unlockedCount - 1 && selectedLevelIndex < LEVELS.length - 1) {
+      unlockedCount = Math.max(unlockedCount, selectedLevelIndex + 2);
+      localStorage.setItem(SAVE_UNLOCKED, unlockedCount);
     }
-    return level.speed * mult;
+
+    state.running = false;
+    state.win = true;
+    state.gameOver = false;
+
+    const hasNext = selectedLevelIndex < LEVELS.length - 1 && isUnlocked(selectedLevelIndex + 1);
+
+    showOverlay(
+      "Level Complete",
+      `${getLevel().name} • ${score}%<br>Coins this run: ${state.coinsThisRun}<br>Level best: ${getLevelBest(getLevel().name)}%`,
+      "Play Again",
+      {
+        showNext: hasNext,
+        showMenu: true,
+        hideLevelList: true,
+        small: "Choose what to do next."
+      }
+    );
+  }
+
+  function failLevel() {
+    spawnDeathParticles();
+    state.flash = 0.9;
+    state.shake = 12;
+
+    if (state.practice && checkpoint) {
+      loadCheckpoint();
+      return;
+    }
+
+    const score = currentPercent();
+    best = Math.max(best, score);
+    bestEl.textContent = best;
+    localStorage.setItem(SAVE_BEST, best);
+    setLevelBest(getLevel().name, score);
+
+    state.running = false;
+    state.gameOver = true;
+    state.win = false;
+
+    showOverlay(
+      "Game Over",
+      `${getLevel().name} • ${score}%<br>Level best: ${getLevelBest(getLevel().name)}%`,
+      "Retry",
+      {
+        showMenu: true,
+        hideLevelList: true,
+        small: "Practice mode respawns at checkpoints."
+      }
+    );
   }
 
   function update(dt) {
@@ -793,16 +875,19 @@
       return;
     }
 
-    state.scrollX += currentLevelSpeed() * dt;
+    state.scrollX += getLevel().speed * state.currentSpeedMul * dt;
     state.flash = Math.max(0, state.flash - dt * 3);
+    state.shake = Math.max(0, state.shake - dt * 26);
 
     const beatNow = state.scrollX / state.beatWidth;
     if (Math.abs(beatNow - Math.round(beatNow)) < 0.035) {
-      state.flash = 0.45;
+      state.flash = Math.max(state.flash, 0.38);
     }
 
     if (player.mode === "cube") updateCube(dt);
     else updateShip(dt);
+
+    updateTrail();
 
     const px = player.x;
     const py = player.y;
@@ -814,62 +899,90 @@
 
       if (o.kind === "block") {
         if (rectsOverlap(px + 4, py + 4, pw - 8, ph - 8, sx, o.y, o.w, o.h)) {
-          endGame(false);
+          failLevel();
           return;
         }
       }
 
-      if (o.kind === "spike") {
-        if (hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, false)) {
-          endGame(false);
-          return;
+      if (o.kind === "spike" && hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, false)) {
+        failLevel();
+        return;
+      }
+      if (o.kind === "spikeCeil" && hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, true)) {
+        failLevel();
+        return;
+      }
+      if (o.kind === "shipGateTop" && hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, true)) {
+        failLevel();
+        return;
+      }
+      if (o.kind === "shipGateBottom" && hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, false)) {
+        failLevel();
+        return;
+      }
+
+      if (o.kind === "orb" && !o.used) {
+        // interaction is handled on press
+      }
+
+      if (o.kind === "pad" && !o.used) {
+        if (rectsOverlap(px, py, pw, ph, sx, o.y - 8, o.w, o.h + 10)) {
+          o.used = true;
+          player.vy = -currentJumpVelocity() * 1.18 * player.gravity;
+          player.onGround = false;
+          state.flash = 0.6;
+          state.shake = 6;
         }
       }
 
-      if (o.kind === "spikeCeil") {
-        if (hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, true)) {
-          endGame(false);
-          return;
+      if (o.kind === "coin" && !o.used) {
+        const d = o.r * 2;
+        if (rectsOverlap(px, py, pw, ph, sx - o.r, o.y - o.r, d, d)) {
+          o.used = true;
+          totalCoins += 1;
+          state.coinsThisRun += 1;
+          localStorage.setItem(SAVE_COINS, totalCoins);
+          updateCoinsHud();
+          state.flash = 0.7;
         }
       }
 
-      if (o.kind === "shipGateTop") {
-        if (hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, true)) {
-          endGame(false);
-          return;
+      if (o.kind === "doubleJumpPickup" && !o.used) {
+        const d = o.r * 2;
+        if (rectsOverlap(px, py, pw, ph, sx - o.r, o.y - o.r, d, d)) {
+          o.used = true;
+          player.doubleJumpAvailable = true;
+          state.flash = 0.5;
         }
       }
 
-      if (o.kind === "shipGateBottom") {
-        if (hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, false)) {
-          endGame(false);
-          return;
+      if (o.kind === "checkpoint" && !o.used) {
+        if (rectsOverlap(px, py, pw, ph, sx, o.y, o.w, o.h)) {
+          o.used = true;
+          saveCheckpoint();
+          state.flash = 0.45;
         }
       }
 
       if (
-        (
-          o.kind === "gravityPortal" ||
-          o.kind === "shipPortal" ||
-          o.kind === "cubePortal" ||
-          o.kind === "miniPortal" ||
-          o.kind === "speedPortalFast" ||
-          o.kind === "speedPortalNormal"
-        ) && !o.used
+        !o.used &&
+        ["gravityPortal", "shipPortal", "cubePortal", "miniPortal", "speedPortalFast", "speedPortalNormal"].includes(o.kind)
       ) {
-        if (rectsOverlap(px, py, pw, ph, sx, o.y, o.w, o.h)) {
+        const hb = expandedPortalHitbox(o);
+        if (rectsOverlap(px, py, pw, ph, hb.x, hb.y, hb.w, hb.h)) {
           o.used = true;
           state.flash = 0.8;
+          state.shake = 7;
 
           if (o.kind === "gravityPortal") {
             player.gravity *= -1;
-            player.vy *= 0.35;
+            player.vy *= 0.28;
 
-            // important fix: snap safely to reachable lane after flip
+            // critical inverted fix
             if (player.gravity === -1) {
-              player.y = Math.min(player.y, 135);
+              player.y = Math.min(player.y, 58);
             } else {
-              player.y = Math.max(player.y, GROUND_Y - player.h - 135);
+              player.y = Math.max(player.y, GROUND_Y - player.h - 58);
             }
           } else if (o.kind === "shipPortal") {
             player.mode = "ship";
@@ -883,40 +996,17 @@
             modeEl.textContent = player.mode;
           } else if (o.kind === "miniPortal") {
             applyMini(!player.mini);
+          } else if (o.kind === "speedPortalFast") {
+            state.currentSpeedMul = 1.18;
+          } else if (o.kind === "speedPortalNormal") {
+            state.currentSpeedMul = 1.0;
           }
-        }
-      }
-
-      if (o.kind === "doubleJumpPickup" && !o.used) {
-        const d = o.r * 2;
-        if (rectsOverlap(px, py, pw, ph, sx - o.r, o.y - o.r, d, d)) {
-          o.used = true;
-          player.doubleJumpAvailable = true;
-        }
-      }
-
-      if (o.kind === "coin" && !o.used) {
-        const d = o.r * 2;
-        if (rectsOverlap(px, py, pw, ph, sx - o.r, o.y - o.r, d, d)) {
-          o.used = true;
-          totalCoins += 1;
-          state.coinsThisRun += 1;
-          localStorage.setItem(coinKey, totalCoins);
-          updateHudCoins();
-          state.flash = 0.7;
-        }
-      }
-
-      if (o.kind === "checkpoint" && !o.used) {
-        if (rectsOverlap(px, py, pw, ph, sx, o.y, o.w, o.h)) {
-          o.used = true;
-          saveCheckpoint();
         }
       }
     }
 
     if (state.scrollX >= state.levelPixelLength) {
-      endGame(true);
+      completeLevel();
       return;
     }
 
@@ -951,15 +1041,13 @@
   }
 
   function drawBackground() {
-    const level = getLevel();
     const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, level.background[0]);
-    g.addColorStop(1, level.background[1]);
+    g.addColorStop(0, getLevel().background[0]);
+    g.addColorStop(1, getLevel().background[1]);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
 
-    // moving glow dots
-    for (let i = 0; i < 22; i++) {
+    for (let i = 0; i < 24; i++) {
       const x = ((i * 170 - state.scrollX * 0.25) % (W + 180)) - 90;
       const y = 50 + ((i * 77) % 260);
       ctx.globalAlpha = 0.08;
@@ -978,7 +1066,6 @@
     ctx.globalAlpha = 0.08;
     ctx.strokeStyle = "#fff";
     ctx.lineWidth = 1;
-
     const offset = state.scrollX % state.beatWidth;
     for (let x = -offset; x < W + state.beatWidth; x += state.beatWidth) {
       ctx.beginPath();
@@ -986,15 +1073,14 @@
       ctx.lineTo(x, H);
       ctx.stroke();
     }
-
     for (let y = 0; y < H; y += 48) {
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(W, y);
       ctx.stroke();
     }
-
     ctx.globalAlpha = 1;
+
     ctx.fillStyle = "rgba(255,255,255,0.14)";
     ctx.fillRect(0, GROUND_Y, W, 8);
 
@@ -1007,18 +1093,18 @@
     }
   }
 
-  function drawPortal(sx, y, w, h, fill) {
+  function drawPortal(x, y, w, h, fill) {
     ctx.fillStyle = fill;
-    ctx.fillRect(sx, y, w, h);
+    ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = "rgba(255,255,255,0.95)";
     ctx.lineWidth = 3;
-    ctx.strokeRect(sx, y, w, h);
+    ctx.strokeRect(x, y, w, h);
   }
 
   function drawObjects() {
     for (const o of objects) {
       const sx = o.x - state.scrollX;
-      if (sx < -120 || sx > W + 120) continue;
+      if (sx < -140 || sx > W + 140) continue;
 
       if (o.kind === "block") {
         ctx.fillStyle = "rgba(255,255,255,0.78)";
@@ -1045,6 +1131,33 @@
         ctx.arc(sx, o.y, o.r * 0.45, 0, Math.PI * 2);
         ctx.fillStyle = o.used ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.95)";
         ctx.fill();
+      } else if (o.kind === "coin") {
+        ctx.beginPath();
+        ctx.arc(sx, o.y, o.r, 0, Math.PI * 2);
+        ctx.fillStyle = o.used ? "rgba(255,255,255,0.12)" : "rgba(255,200,40,0.95)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.85)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      } else if (o.kind === "doubleJumpPickup") {
+        ctx.beginPath();
+        ctx.arc(sx, o.y, o.r, 0, Math.PI * 2);
+        ctx.fillStyle = o.used ? "rgba(255,255,255,0.15)" : "rgba(130,255,130,0.95)";
+        ctx.fill();
+      } else if (o.kind === "checkpoint") {
+        ctx.fillStyle = o.used ? "rgba(120,255,140,0.95)" : "rgba(120,200,255,0.85)";
+        ctx.fillRect(sx, o.y, o.w, o.h);
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.beginPath();
+        ctx.moveTo(sx + o.w, o.y + 8);
+        ctx.lineTo(sx + o.w + 20, o.y + 18);
+        ctx.lineTo(sx + o.w, o.y + 28);
+        ctx.closePath();
+        ctx.fill();
+      } else if (o.kind === "pad") {
+        ctx.fillStyle = o.used ? "rgba(255,255,255,0.2)" : "rgba(255,120,220,0.95)";
+        roundRect(sx, o.y, o.w, o.h, 5);
+        ctx.fill();
       } else if (o.kind === "gravityPortal") {
         drawPortal(sx, o.y, o.w, o.h, "rgba(255,120,210,0.65)");
       } else if (o.kind === "shipPortal") {
@@ -1057,34 +1170,19 @@
         drawPortal(sx, o.y, o.w, o.h, "rgba(255,120,120,0.65)");
       } else if (o.kind === "speedPortalNormal") {
         drawPortal(sx, o.y, o.w, o.h, "rgba(120,220,255,0.65)");
-      } else if (o.kind === "doubleJumpPickup") {
-        ctx.beginPath();
-        ctx.arc(sx, o.y, o.r, 0, Math.PI * 2);
-        ctx.fillStyle = o.used ? "rgba(255,255,255,0.15)" : "rgba(130,255,130,0.95)";
-        ctx.fill();
-        ctx.fillStyle = "rgba(0,0,0,0.35)";
-        ctx.fillRect(sx - 6, o.y - 2, 5, 10);
-        ctx.fillRect(sx + 1, o.y - 8, 5, 16);
-      } else if (o.kind === "coin") {
-        ctx.beginPath();
-        ctx.arc(sx, o.y, o.r, 0, Math.PI * 2);
-        ctx.fillStyle = o.used ? "rgba(255,255,255,0.12)" : "rgba(255,200,40,0.95)";
-        ctx.fill();
-        ctx.strokeStyle = "rgba(255,255,255,0.85)";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      } else if (o.kind === "checkpoint") {
-        ctx.fillStyle = o.used ? "rgba(120,255,140,0.95)" : "rgba(120,200,255,0.85)";
-        ctx.fillRect(sx, o.y, o.w, o.h);
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
-        ctx.beginPath();
-        ctx.moveTo(sx + o.w, o.y + 8);
-        ctx.lineTo(sx + o.w + 20, o.y + 18);
-        ctx.lineTo(sx + o.w, o.y + 28);
-        ctx.closePath();
-        ctx.fill();
       }
     }
+  }
+
+  function drawTrail() {
+    for (const t of trail) {
+      ctx.globalAlpha = Math.max(0, t.life) * 0.5;
+      ctx.fillStyle = player.mini ? "rgba(255,220,120,0.8)" : "rgba(124,255,255,0.8)";
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.size * t.life, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
 
   function drawParticles() {
@@ -1153,8 +1251,17 @@
   }
 
   function draw() {
+    ctx.save();
+
+    if (state.shake > 0) {
+      const sx = (Math.random() - 0.5) * state.shake;
+      const sy = (Math.random() - 0.5) * state.shake;
+      ctx.translate(sx, sy);
+    }
+
     drawBackground();
     drawObjects();
+    drawTrail();
     drawParticles();
     drawPlayer();
     drawProgressBar();
@@ -1164,6 +1271,8 @@
     vignette.addColorStop(1, "rgba(0,0,0,0.34)");
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, W, H);
+
+    ctx.restore();
   }
 
   function loop(t) {
@@ -1196,20 +1305,20 @@
     else startGame();
   });
 
-  menuBtn.addEventListener("click", () => {
-    state.running = false;
-    state.paused = false;
-    showOverlay(
-      "Mini Dash Deluxe+",
-      `Pick a level and press start.<br>Total coins: ${totalCoins}<br>Global best: ${best}%`,
-      "Start"
-    );
-  });
+  nextBtn.addEventListener("click", goToNextLevel);
+  menuOverlayBtn.addEventListener("click", goToMainMenu);
+
+  menuBtn.addEventListener("click", goToMainMenu);
 
   levelBtn.addEventListener("click", () => {
     state.running = false;
     state.paused = false;
-    showOverlay("Select Level", "Each level gets harder. Practice mode is recommended for the last two.", "Start");
+    showOverlay(
+      "Select Level",
+      "Each level gets harder. Practice mode helps a lot on the later ones.",
+      "Start",
+      { small: "Locked levels unlock when you beat the previous one." }
+    );
   });
 
   practiceBtn.addEventListener("click", () => {
@@ -1230,14 +1339,6 @@
   });
 
   resetLevel();
-  showOverlay(
-    "Mini Dash Deluxe+",
-    `Pick a level and press start.<br>Total coins: ${totalCoins}<br>Global best: ${best}%`,
-    "Start"
-  );
+  goToMainMenu();
   requestAnimationFrame(loop);
 })();
-
-
-
-
