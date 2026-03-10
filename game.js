@@ -76,7 +76,7 @@
   };
 
   const CUBE_GRAVITY = 2550;
-  const JUMP_V =1300;
+  const JUMP_V =1800;
   const MAX_FALL = 1600;
   const COYOTE = 0.09;
   const JUMP_BUFFER = 0.12;
@@ -1237,5 +1237,6 @@
   );
   requestAnimationFrame(loop);
 })();
+
 
 
