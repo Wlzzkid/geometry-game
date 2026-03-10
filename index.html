@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Mini Dash Ultra</title>
+  <title>Mini Dash Infinity</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -22,6 +22,8 @@
         <button id="menuBtn">Menu</button>
         <button id="levelBtn">Levels</button>
         <button id="practiceBtn">Practice: Off</button>
+        <button id="settingsBtn">Settings</button>
+        <button id="editorBtn">Editor</button>
         <button id="fsBtn">Fullscreen</button>
       </div>
       <div id="hint">
@@ -31,10 +33,12 @@
 
     <div id="overlay">
       <div class="card">
-        <h1 id="ovTitle">Mini Dash Ultra</h1>
+        <h1 id="ovTitle">Mini Dash Infinity</h1>
         <p id="ovText">Pick a level and press start.</p>
 
         <div id="levelList"></div>
+        <div id="settingsPanel" class="hidden panelBlock"></div>
+        <div id="editorPanel" class="hidden panelBlock"></div>
 
         <div class="overlayButtons">
           <button id="btn">Start</button>
