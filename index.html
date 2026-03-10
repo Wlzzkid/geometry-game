@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Mini Dash</title>
+  <title>Mini Dash+</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -14,17 +14,30 @@
       <div class="row">
         <div class="pill">Score: <span id="score">0</span></div>
         <div class="pill">Best: <span id="best">0</span></div>
-        <div class="pill">Speed: <span id="spd">1.0</span>x</div>
+        <div class="pill">Mode: <span id="mode">cube</span></div>
+        <div class="pill">Level: <span id="levelName">Stereo Run</span></div>
       </div>
-      <div id="hint">Press <b>Space</b>/<b>↑</b> or <b>Click</b> to jump • <b>R</b> restart</div>
+      <div class="row">
+        <button id="levelBtn">Change Level</button>
+        <button id="fsBtn">Fullscreen</button>
+      </div>
+      <div id="hint">Space / ↑ / Click = jump • hold in ship mode to rise • R = restart</div>
     </div>
 
-    <div id="overlay" class="hidden">
+    <div id="overlay">
       <div class="card">
-        <h1 id="ovTitle">Mini Dash</h1>
-        <p id="ovText">Press Space / Click to start</p>
-        <button id="btn">Start</button>
-        <small>Tip: hold jump slightly early — there’s jump buffering.</small>
+        <h1 id="ovTitle">Mini Dash+</h1>
+        <p id="ovText">Choose a level and start.</p>
+
+        <div id="levelList"></div>
+
+        <div class="overlayButtons">
+          <button id="btn">Start</button>
+        </div>
+
+        <small>
+          Features: beat obstacles, orbs, double jump, gravity flip, ship mode.
+        </small>
       </div>
     </div>
   </div>
