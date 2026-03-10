@@ -3,31 +3,36 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Mini Dash+</title>
+  <title>Mini Dash Deluxe</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div id="wrap">
     <canvas id="c" width="960" height="540"></canvas>
 
-    <div id="ui">
+    <div id="hud">
       <div class="row">
-        <div class="pill">Score: <span id="score">0</span></div>
-        <div class="pill">Best: <span id="best">0</span></div>
+        <div class="pill">Progress: <span id="score">0</span>%</div>
+        <div class="pill">Best: <span id="best">0</span>%</div>
         <div class="pill">Mode: <span id="mode">cube</span></div>
-        <div class="pill">Level: <span id="levelName">Stereo Run</span></div>
+        <div class="pill">Level: <span id="levelName">Starter Path</span></div>
+        <div class="pill">Coins: <span id="coins">0</span></div>
       </div>
       <div class="row">
-        <button id="levelBtn">Change Level</button>
+        <button id="menuBtn">Menu</button>
+        <button id="levelBtn">Levels</button>
+        <button id="practiceBtn">Practice: Off</button>
         <button id="fsBtn">Fullscreen</button>
       </div>
-      <div id="hint">Space / ↑ / Click = jump • hold in ship mode to rise • R = restart</div>
+      <div id="hint">
+        Space / ↑ / Click = jump • hold in ship mode = fly up • P = pause • R = restart
+      </div>
     </div>
 
     <div id="overlay">
       <div class="card">
-        <h1 id="ovTitle">Mini Dash+</h1>
-        <p id="ovText">Choose a level and start.</p>
+        <h1 id="ovTitle">Mini Dash Deluxe</h1>
+        <p id="ovText">Pick a level and press start.</p>
 
         <div id="levelList"></div>
 
@@ -36,7 +41,7 @@
         </div>
 
         <small>
-          Features: beat obstacles, orbs, double jump, gravity flip, ship mode.
+          Features: ship mode, gravity flip, orbs, coins, checkpoints, practice mode, particles.
         </small>
       </div>
     </div>
