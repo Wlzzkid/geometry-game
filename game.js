@@ -1,4 +1,4 @@
-(() => {(() => {
+(() => {
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d");
 
@@ -17,8 +17,8 @@
 
   const W = canvas.width;
   const H = canvas.height;
-  const GROUND_Y = H * 0.80;
-  const START_X = W * 0.22;
+  const START_X = 180;
+  const GROUND_Y = H * 0.8;
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -30,9 +30,9 @@
     {
       name: "Stereo Run",
       bpm: 128,
-      songLengthBeats: 112,
-      speed: 260,
+      speed: 320,
       background: ["#0d1320", "#070a10"],
+      lengthBeats: 120,
       sequence: [
         { beat: 4, type: "spike" },
         { beat: 6, type: "spike" },
@@ -46,7 +46,6 @@
         { beat: 28, type: "gravityPortal" },
         { beat: 30, type: "spikeCeil" },
         { beat: 32, type: "spikeCeil" },
-        { beat: 34, type: "orb", y: "mid" },
         { beat: 36, type: "spikeCeil" },
         { beat: 40, type: "gravityPortal" },
         { beat: 44, type: "shipPortal" },
@@ -74,9 +73,9 @@
     {
       name: "Pulse Flight",
       bpm: 142,
-      songLengthBeats: 118,
-      speed: 300,
+      speed: 360,
       background: ["#1a1028", "#0a0814"],
+      lengthBeats: 118,
       sequence: [
         { beat: 4, type: "spike" },
         { beat: 5, type: "spike" },
@@ -118,16 +117,16 @@
   ];
 
   let selectedLevelIndex = 0;
+  let objects = [];
+  let last = performance.now();
 
   const state = {
     running: false,
     gameOver: false,
     win: false,
-    level: null,
-    beatWidth: 120,
     scrollX: 0,
+    beatWidth: 110,
     levelPixelLength: 0,
-    nowBeat: 0,
     flash: 0
   };
 
@@ -147,16 +146,31 @@
     rotation: 0
   };
 
-  const objects = [];
-
   const CUBE_GRAVITY = 2800;
   const JUMP_V = 980;
-  const MAX_FALL = 1600;
+  const MAX_FALL = 1700;
   const COYOTE = 0.08;
-  const JUMP_BUFFER = 0.11;
-  const SHIP_THRUST = 1700;
+  const JUMP_BUFFER = 0.12;
+
+  const SHIP_THRUST = 1750;
   const SHIP_GRAVITY = 1200;
-  const SHIP_MAX = 700;
+  const SHIP_MAX = 720;
+
+  function getLevel() {
+    return LEVELS[selectedLevelIndex];
+  }
+
+  function showOverlay(title, text, buttonLabel = "Start") {
+    ovTitle.textContent = title;
+    ovText.textContent = text;
+    btn.textContent = buttonLabel;
+    overlay.classList.remove("hidden");
+    buildLevelList();
+  }
+
+  function hideOverlay() {
+    overlay.classList.add("hidden");
+  }
 
   function buildLevelList() {
     levelList.innerHTML = "";
@@ -165,85 +179,25 @@
       el.className = "levelItem" + (i === selectedLevelIndex ? " active" : "");
       el.innerHTML = `
         <div class="name">${lvl.name}</div>
-        <div class="meta">${lvl.bpm} BPM • ${lvl.songLengthBeats} beats</div>
+        <div class="meta">${lvl.bpm} BPM • ${lvl.lengthBeats} beats</div>
       `;
       el.addEventListener("click", () => {
         selectedLevelIndex = i;
+        levelNameEl.textContent = getLevel().name;
         buildLevelList();
-        levelNameEl.textContent = LEVELS[selectedLevelIndex].name;
+        resetLevel(false);
       });
       levelList.appendChild(el);
     });
   }
 
-  function showOverlay(title, text, startLabel = "Start") {
-    ovTitle.textContent = title;
-    ovText.textContent = text;
-    btn.textContent = startLabel;
-    buildLevelList();
-    overlay.classList.remove("hidden");
-  }
-
-  function hideOverlay() {
-    overlay.classList.add("hidden");
-  }
-
   function yPreset(name) {
-    if (name === "high") return H * 0.30;
+    if (name === "high") return H * 0.3;
     if (name === "mid") return H * 0.52;
     return H * 0.68;
   }
 
-  function buildObjects(level) {
-    objects.length = 0;
-    const beatWidth = state.beatWidth;
-
-    for (const item of level.sequence) {
-      const x = item.beat * beatWidth + W * 0.9;
-
-      if (item.type === "spike") {
-        objects.push({ kind: "spike", x, y: GROUND_Y, w: 38, h: 38, passed: false });
-      } else if (item.type === "doubleSpike") {
-        objects.push({ kind: "spike", x, y: GROUND_Y, w: 38, h: 38, passed: false });
-        objects.push({ kind: "spike", x: x + 38, y: GROUND_Y, w: 38, h: 38, passed: false });
-      } else if (item.type === "tripleSpike") {
-        for (let i = 0; i < 3; i++) {
-          objects.push({ kind: "spike", x: x + i * 36, y: GROUND_Y, w: 36, h: 36, passed: false });
-        }
-      } else if (item.type === "block") {
-        objects.push({ kind: "block", x, y: GROUND_Y - item.h, w: 52, h: item.h, passed: false });
-      } else if (item.type === "orb") {
-        objects.push({ kind: "orb", x, y: yPreset(item.y), r: 14, used: false });
-      } else if (item.type === "gravityPortal") {
-        objects.push({ kind: "gravityPortal", x, y: H * 0.5 - 45, w: 26, h: 90, used: false });
-      } else if (item.type === "shipPortal") {
-        objects.push({ kind: "shipPortal", x, y: H * 0.5 - 50, w: 26, h: 100, used: false });
-      } else if (item.type === "cubePortal") {
-        objects.push({ kind: "cubePortal", x, y: H * 0.5 - 50, w: 26, h: 100, used: false });
-      } else if (item.type === "doubleJumpPickup") {
-        objects.push({ kind: "doubleJumpPickup", x, y: H * 0.58, r: 13, used: false });
-      } else if (item.type === "spikeCeil") {
-        objects.push({ kind: "spikeCeil", x, y: 0, w: 38, h: 38, passed: false });
-      } else if (item.type === "shipSpikeTop") {
-        objects.push({ kind: "shipSpikeTop", x, y: 0, w: 46, h: 70, passed: false });
-      } else if (item.type === "shipSpikeBottom") {
-        objects.push({ kind: "shipSpikeBottom", x, y: GROUND_Y, w: 46, h: 70, passed: false });
-      }
-    }
-
-    state.levelPixelLength = level.songLengthBeats * beatWidth + W * 1.2;
-  }
-
-  function loadLevel(index) {
-    const level = LEVELS[index];
-    state.level = level;
-    state.beatWidth = clamp(6000 / level.bpm, 90, 130);
-    state.scrollX = 0;
-    state.nowBeat = 0;
-    state.flash = 0;
-    buildObjects(level);
-    levelNameEl.textContent = level.name;
-
+  function resetPlayer() {
     player.x = START_X;
     player.y = GROUND_Y - player.h;
     player.vy = 0;
@@ -255,91 +209,97 @@
     player.doubleJumpAvailable = false;
     player.shipThrust = false;
     player.rotation = 0;
-
-    state.running = false;
-    state.gameOver = false;
-    state.win = false;
-    scoreEl.textContent = "0";
     modeEl.textContent = player.mode;
   }
 
-  function restart() {
-    loadLevel(selectedLevelIndex);
-    state.running = true;
-    hideOverlay();
-    last = performance.now();
+  function buildObjects() {
+    const level = getLevel();
+    objects = [];
+
+    for (const item of level.sequence) {
+      const x = item.beat * state.beatWidth + W * 0.9;
+
+      if (item.type === "spike") {
+        objects.push({ kind: "spike", x, y: GROUND_Y, w: 38, h: 38, used: false });
+      } else if (item.type === "doubleSpike") {
+        objects.push({ kind: "spike", x, y: GROUND_Y, w: 38, h: 38, used: false });
+        objects.push({ kind: "spike", x: x + 36, y: GROUND_Y, w: 38, h: 38, used: false });
+      } else if (item.type === "tripleSpike") {
+        for (let i = 0; i < 3; i++) {
+          objects.push({ kind: "spike", x: x + i * 34, y: GROUND_Y, w: 36, h: 36, used: false });
+        }
+      } else if (item.type === "block") {
+        objects.push({ kind: "block", x, y: GROUND_Y - item.h, w: 54, h: item.h, used: false });
+      } else if (item.type === "orb") {
+        objects.push({ kind: "orb", x, y: yPreset(item.y), r: 14, used: false });
+      } else if (item.type === "gravityPortal") {
+        objects.push({ kind: "gravityPortal", x, y: H * 0.5 - 45, w: 28, h: 90, used: false });
+      } else if (item.type === "shipPortal") {
+        objects.push({ kind: "shipPortal", x, y: H * 0.5 - 50, w: 28, h: 100, used: false });
+      } else if (item.type === "cubePortal") {
+        objects.push({ kind: "cubePortal", x, y: H * 0.5 - 50, w: 28, h: 100, used: false });
+      } else if (item.type === "doubleJumpPickup") {
+        objects.push({ kind: "doubleJumpPickup", x, y: H * 0.58, r: 13, used: false });
+      } else if (item.type === "spikeCeil") {
+        objects.push({ kind: "spikeCeil", x, y: 0, w: 38, h: 38, used: false });
+      } else if (item.type === "shipSpikeTop") {
+        objects.push({ kind: "shipSpikeTop", x, y: 0, w: 46, h: 70, used: false });
+      } else if (item.type === "shipSpikeBottom") {
+        objects.push({ kind: "shipSpikeBottom", x, y: GROUND_Y, w: 46, h: 70, used: false });
+      }
+    }
+
+    state.levelPixelLength = level.lengthBeats * state.beatWidth + W;
+  }
+
+  function resetLevel(keepOverlay = true) {
+    const level = getLevel();
+    state.beatWidth = clamp(6000 / level.bpm, 90, 125);
+    state.scrollX = 0;
+    state.flash = 0;
+    state.running = false;
+    state.gameOver = false;
+    state.win = false;
+    levelNameEl.textContent = level.name;
+    scoreEl.textContent = "0";
+    resetPlayer();
+    buildObjects();
+    if (!keepOverlay) draw();
   }
 
   function startGame() {
-    loadLevel(selectedLevelIndex);
+    resetLevel();
     state.running = true;
     hideOverlay();
     last = performance.now();
   }
 
-  function endGame(win = false) {
+  function restartGame() {
+    resetLevel();
+    state.running = true;
+    hideOverlay();
+    last = performance.now();
+  }
+
+  function currentPercent() {
+    return clamp(Math.floor((state.scrollX / state.levelPixelLength) * 100), 0, 100);
+  }
+
+  function endGame(win) {
     state.running = false;
     state.gameOver = !win;
     state.win = win;
 
-    const score = Math.floor((state.scrollX / state.levelPixelLength) * 100);
+    const score = currentPercent();
     best = Math.max(best, score);
     localStorage.setItem("miniDashPlusBest", best);
     bestEl.textContent = best;
 
     if (win) {
-      showOverlay("Level Complete", `${state.level.name} cleared • ${score}%`, "Play Again");
+      showOverlay("Level Complete", `${getLevel().name} • ${score}%`, "Play Again");
     } else {
-      showOverlay("Game Over", `${state.level.name} • ${score}%`, "Retry");
+      showOverlay("Game Over", `${getLevel().name} • ${score}%`, "Retry");
     }
-  }
-
-  function pressJump() {
-    if (!state.running && !state.gameOver && !state.win) {
-      startGame();
-      return;
-    }
-    if (state.gameOver || state.win) {
-      restart();
-      return;
-    }
-
-    if (player.mode === "ship") {
-      player.shipThrust = true;
-      return;
-    }
-
-    player.jumpBuffer = JUMP_BUFFER;
-
-    const orb = findOrbInRange();
-    if (orb && !orb.used) {
-      orb.used = true;
-      player.vy = -JUMP_V * 1.05 * player.gravity;
-      player.onGround = false;
-      return;
-    }
-
-    if (!player.onGround && player.doubleJumpAvailable) {
-      player.doubleJumpAvailable = false;
-      player.vy = -JUMP_V * 0.92 * player.gravity;
-      player.onGround = false;
-      return;
-    }
-  }
-
-  function releaseJump() {
-    if (player.mode === "ship") player.shipThrust = false;
-  }
-
-  function findOrbInRange() {
-    for (const o of objects) {
-      if (o.kind !== "orb" || o.used) continue;
-      const sx = o.x - state.scrollX;
-      const dx = Math.abs((player.x + player.w * 0.5) - sx);
-      const dy = Math.abs((player.y + player.h * 0.5) - o.y);
-      if (dx < 48 && dy < 46) return o;
-    }
-    return null;
   }
 
   function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -347,12 +307,15 @@
   }
 
   function pointInTri(px, py, ax, ay, bx, by, cx, cy) {
-    const area = (x1, y1, x2, y2, x3, y3) => (x1*(y2-y3) + x2*(y3-y1) + x3*(y1-y2));
+    const area = (x1, y1, x2, y2, x3, y3) =>
+      x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2);
+
     const A = area(ax, ay, bx, by, cx, cy);
     const A1 = area(px, py, bx, by, cx, cy);
     const A2 = area(ax, ay, px, py, cx, cy);
     const A3 = area(ax, ay, bx, by, px, py);
-    return Math.sign(A) === Math.sign(A1) && Math.sign(A) === Math.sign(A2) && Math.sign(A) === Math.sign(A3);
+
+    return (A >= 0 && A1 >= 0 && A2 >= 0 && A3 >= 0) || (A <= 0 && A1 <= 0 && A2 <= 0 && A3 <= 0);
   }
 
   function hitSpike(px, py, pw, ph, sx, sy, sw, sh, upsideDown = false) {
@@ -363,23 +326,67 @@
       ? [[sx, sy], [sx + sw / 2, sy + sh], [sx + sw, sy]]
       : [[sx, sy], [sx + sw / 2, sy - sh], [sx + sw, sy]];
 
-    const pts = [
+    const points = [
       [px, py],
       [px + pw, py],
       [px, py + ph],
       [px + pw, py + ph],
-      [px + pw * 0.5, py + ph * 0.5]
+      [px + pw / 2, py + ph / 2]
     ];
 
-    for (const p of pts) {
-      if (pointInTri(p[0], p[1], tri[0][0], tri[0][1], tri[1][0], tri[1][1], tri[2][0], tri[2][1])) {
+    for (const [x, y] of points) {
+      if (pointInTri(x, y, tri[0][0], tri[0][1], tri[1][0], tri[1][1], tri[2][0], tri[2][1])) {
         return true;
       }
     }
     return false;
   }
 
-  function handleCubePhysics(dt) {
+  function findOrbInRange() {
+    for (const o of objects) {
+      if (o.kind !== "orb" || o.used) continue;
+      const sx = o.x - state.scrollX;
+      const dx = Math.abs((player.x + player.w / 2) - sx);
+      const dy = Math.abs((player.y + player.h / 2) - o.y);
+      if (dx < 48 && dy < 50) return o;
+    }
+    return null;
+  }
+
+  function pressJump() {
+    if (!state.running) {
+      if (state.gameOver || state.win) restartGame();
+      else startGame();
+      return;
+    }
+
+    if (player.mode === "ship") {
+      player.shipThrust = true;
+      return;
+    }
+
+    const orb = findOrbInRange();
+    if (orb) {
+      orb.used = true;
+      player.vy = -JUMP_V * 1.05 * player.gravity;
+      player.onGround = false;
+      return;
+    }
+
+    if (!player.onGround && player.doubleJumpAvailable) {
+      player.doubleJumpAvailable = false;
+      player.vy = -JUMP_V * 0.9 * player.gravity;
+      return;
+    }
+
+    player.jumpBuffer = JUMP_BUFFER;
+  }
+
+  function releaseJump() {
+    if (player.mode === "ship") player.shipThrust = false;
+  }
+
+  function updateCube(dt) {
     player.coyote = Math.max(0, player.coyote - dt);
     player.jumpBuffer = Math.max(0, player.jumpBuffer - dt);
 
@@ -387,33 +394,40 @@
     player.vy = clamp(player.vy, -MAX_FALL, MAX_FALL);
     player.y += player.vy * dt;
 
-    const floorY = player.gravity === 1 ? GROUND_Y - player.h : 0;
-    const hitGround = player.gravity === 1
-      ? player.y + player.h >= GROUND_Y
-      : player.y <= 0;
+    let touchingSurface = false;
 
-    if (hitGround) {
-      player.y = floorY;
-      player.vy = 0;
+    if (player.gravity === 1) {
+      if (player.y + player.h >= GROUND_Y) {
+        player.y = GROUND_Y - player.h;
+        player.vy = 0;
+        touchingSurface = true;
+      }
+    } else {
+      if (player.y <= 0) {
+        player.y = 0;
+        player.vy = 0;
+        touchingSurface = true;
+      }
+    }
+
+    if (touchingSurface) {
       player.onGround = true;
       player.coyote = COYOTE;
     } else {
-      if (player.onGround) player.onGround = false;
+      player.onGround = false;
     }
 
-    const canJump = player.onGround || player.coyote > 0;
-    if (player.jumpBuffer > 0 && canJump) {
+    if (player.jumpBuffer > 0 && (player.onGround || player.coyote > 0)) {
       player.jumpBuffer = 0;
-      player.onGround = false;
       player.coyote = 0;
+      player.onGround = false;
       player.vy = -JUMP_V * player.gravity;
     }
 
-    const targetRot = clamp(player.vy / 900, -1, 1) * 0.8;
-    player.rotation = lerp(player.rotation, targetRot, 0.18);
+    player.rotation = lerp(player.rotation, clamp(player.vy / 900, -1, 1) * 0.75, 0.2);
   }
 
-  function handleShipPhysics(dt) {
+  function updateShip(dt) {
     if (player.shipThrust) {
       player.vy -= SHIP_THRUST * player.gravity * dt;
     } else {
@@ -436,17 +450,18 @@
   }
 
   function update(dt) {
-    state.scrollX += state.level.speed * dt;
-    state.nowBeat = state.scrollX / state.beatWidth;
-    state.flash = Math.max(0, state.flash - dt * 3.2);
+    const level = getLevel();
 
-    const nearestBeat = Math.round(state.nowBeat);
-    if (Math.abs(state.nowBeat - nearestBeat) < 0.035) {
-      state.flash = 0.9;
+    state.scrollX += level.speed * dt;
+    state.flash = Math.max(0, state.flash - dt * 3);
+
+    const beatNow = state.scrollX / state.beatWidth;
+    if (Math.abs(beatNow - Math.round(beatNow)) < 0.035) {
+      state.flash = 0.8;
     }
 
-    if (player.mode === "cube") handleCubePhysics(dt);
-    else handleShipPhysics(dt);
+    if (player.mode === "cube") updateCube(dt);
+    else updateShip(dt);
 
     const px = player.x;
     const py = player.y;
@@ -457,54 +472,64 @@
       const sx = o.x - state.scrollX;
 
       if (o.kind === "block") {
-        if (rectsOverlap(px, py, pw, ph, sx, o.y, o.w, o.h)) return endGame(false);
+        if (rectsOverlap(px, py, pw, ph, sx, o.y, o.w, o.h)) {
+          endGame(false);
+          return;
+        }
       }
 
       if (o.kind === "spike") {
-        if (hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, false)) return endGame(false);
+        if (hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, false)) {
+          endGame(false);
+          return;
+        }
       }
 
       if (o.kind === "spikeCeil") {
-        if (hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, true)) return endGame(false);
+        if (hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, true)) {
+          endGame(false);
+          return;
+        }
       }
 
       if (o.kind === "shipSpikeTop") {
-        if (hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, true)) return endGame(false);
+        if (hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, true)) {
+          endGame(false);
+          return;
+        }
       }
 
       if (o.kind === "shipSpikeBottom") {
-        if (hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, false)) return endGame(false);
-      }
-
-      if (o.kind === "gravityPortal" && !o.used) {
-        if (rectsOverlap(px, py, pw, ph, sx, o.y, o.w, o.h)) {
-          o.used = true;
-          player.gravity *= -1;
-          player.vy *= 0.4;
+        if (hitSpike(px, py, pw, ph, sx, o.y, o.w, o.h, false)) {
+          endGame(false);
+          return;
         }
       }
 
-      if (o.kind === "shipPortal" && !o.used) {
+      if ((o.kind === "gravityPortal" || o.kind === "shipPortal" || o.kind === "cubePortal") && !o.used) {
         if (rectsOverlap(px, py, pw, ph, sx, o.y, o.w, o.h)) {
           o.used = true;
-          player.mode = "ship";
-          modeEl.textContent = player.mode;
-          player.vy = 0;
-        }
-      }
 
-      if (o.kind === "cubePortal" && !o.used) {
-        if (rectsOverlap(px, py, pw, ph, sx, o.y, o.w, o.h)) {
-          o.used = true;
-          player.mode = "cube";
-          modeEl.textContent = player.mode;
-          player.vy = 0;
+          if (o.kind === "gravityPortal") {
+            player.gravity *= -1;
+            player.vy *= 0.35;
+          } else if (o.kind === "shipPortal") {
+            player.mode = "ship";
+            player.shipThrust = false;
+            player.vy = 0;
+            modeEl.textContent = player.mode;
+          } else if (o.kind === "cubePortal") {
+            player.mode = "cube";
+            player.shipThrust = false;
+            player.vy = 0;
+            modeEl.textContent = player.mode;
+          }
         }
       }
 
       if (o.kind === "doubleJumpPickup" && !o.used) {
-        const rr = o.r * 2;
-        if (rectsOverlap(px, py, pw, ph, sx - o.r, o.y - o.r, rr, rr)) {
+        const d = o.r * 2;
+        if (rectsOverlap(px, py, pw, ph, sx - o.r, o.y - o.r, d, d)) {
           o.used = true;
           player.doubleJumpAvailable = true;
         }
@@ -513,22 +538,49 @@
 
     if (state.scrollX >= state.levelPixelLength) {
       endGame(true);
+      return;
     }
 
-    const score = clamp(Math.floor((state.scrollX / state.levelPixelLength) * 100), 0, 100);
-    scoreEl.textContent = score;
+    scoreEl.textContent = String(currentPercent());
+  }
+
+  function roundRect(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawSpike(x, y, w, h, top = false) {
+    ctx.beginPath();
+    if (top) {
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + w / 2, y + h);
+      ctx.lineTo(x + w, y);
+    } else {
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + w / 2, y - h);
+      ctx.lineTo(x + w, y);
+    }
+    ctx.closePath();
+    ctx.fill();
   }
 
   function drawBackground() {
+    const level = getLevel();
+
     const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, state.level.background[0]);
-    g.addColorStop(1, state.level.background[1]);
+    g.addColorStop(0, level.background[0]);
+    g.addColorStop(1, level.background[1]);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
 
-    const flashAlpha = state.flash * 0.08;
-    if (flashAlpha > 0.001) {
-      ctx.fillStyle = `rgba(255,255,255,${flashAlpha})`;
+    if (state.flash > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${state.flash * 0.08})`;
       ctx.fillRect(0, 0, W, H);
     }
 
@@ -536,8 +588,8 @@
     ctx.strokeStyle = "#fff";
     ctx.lineWidth = 1;
 
-    const beatOffset = state.scrollX % state.beatWidth;
-    for (let x = -beatOffset; x < W + state.beatWidth; x += state.beatWidth) {
+    const offset = state.scrollX % state.beatWidth;
+    for (let x = -offset; x < W + state.beatWidth; x += state.beatWidth) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, H);
@@ -550,54 +602,10 @@
       ctx.lineTo(W, y);
       ctx.stroke();
     }
+
     ctx.globalAlpha = 1;
-
-    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
     ctx.fillRect(0, GROUND_Y, W, 8);
-  }
-
-  function drawOrb(x, y, r, used) {
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = used ? "rgba(255,255,255,0.15)" : "rgba(255,220,90,0.95)";
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(x, y, r * 0.45, 0, Math.PI * 2);
-    ctx.fillStyle = used ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.95)";
-    ctx.fill();
-  }
-
-  function drawPortal(x, y, w, h, color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = "rgba(255,255,255,0.95)";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(x, y, w, h);
-  }
-
-  function roundRect(x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
-  function drawSpike(x, y, w, h, top = false) {
-    ctx.beginPath();
-    if (!top) {
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + w / 2, y - h);
-      ctx.lineTo(x + w, y);
-    } else {
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + w / 2, y + h);
-      ctx.lineTo(x + w, y);
-    }
-    ctx.closePath();
-    ctx.fill();
   }
 
   function drawObjects() {
@@ -610,30 +618,51 @@
         roundRect(sx, o.y, o.w, o.h, 10);
         ctx.fill();
       } else if (o.kind === "spike") {
-        ctx.fillStyle = "rgba(255,255,255,0.88)";
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
         drawSpike(sx, o.y, o.w, o.h, false);
       } else if (o.kind === "spikeCeil") {
-        ctx.fillStyle = "rgba(255,255,255,0.88)";
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
         drawSpike(sx, o.y, o.w, o.h, true);
       } else if (o.kind === "shipSpikeTop") {
-        ctx.fillStyle = "rgba(255,110,110,0.92)";
+        ctx.fillStyle = "rgba(255,120,120,0.94)";
         drawSpike(sx, o.y, o.w, o.h, true);
       } else if (o.kind === "shipSpikeBottom") {
-        ctx.fillStyle = "rgba(255,110,110,0.92)";
+        ctx.fillStyle = "rgba(255,120,120,0.94)";
         drawSpike(sx, o.y, o.w, o.h, false);
       } else if (o.kind === "orb") {
-        drawOrb(sx, o.y, o.r, o.used);
+        ctx.beginPath();
+        ctx.arc(sx, o.y, o.r, 0, Math.PI * 2);
+        ctx.fillStyle = o.used ? "rgba(255,255,255,0.15)" : "rgba(255,220,90,0.95)";
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(sx, o.y, o.r * 0.45, 0, Math.PI * 2);
+        ctx.fillStyle = o.used ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.95)";
+        ctx.fill();
       } else if (o.kind === "gravityPortal") {
-        drawPortal(sx, o.y, o.w, o.h, "rgba(255,120,210,0.65)");
+        ctx.fillStyle = "rgba(255,120,210,0.65)";
+        ctx.fillRect(sx, o.y, o.w, o.h);
+        ctx.strokeStyle = "rgba(255,255,255,0.95)";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(sx, o.y, o.w, o.h);
       } else if (o.kind === "shipPortal") {
-        drawPortal(sx, o.y, o.w, o.h, "rgba(90,255,180,0.65)");
+        ctx.fillStyle = "rgba(90,255,180,0.65)";
+        ctx.fillRect(sx, o.y, o.w, o.h);
+        ctx.strokeStyle = "rgba(255,255,255,0.95)";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(sx, o.y, o.w, o.h);
       } else if (o.kind === "cubePortal") {
-        drawPortal(sx, o.y, o.w, o.h, "rgba(90,170,255,0.65)");
+        ctx.fillStyle = "rgba(90,170,255,0.65)";
+        ctx.fillRect(sx, o.y, o.w, o.h);
+        ctx.strokeStyle = "rgba(255,255,255,0.95)";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(sx, o.y, o.w, o.h);
       } else if (o.kind === "doubleJumpPickup") {
         ctx.beginPath();
         ctx.arc(sx, o.y, o.r, 0, Math.PI * 2);
         ctx.fillStyle = o.used ? "rgba(255,255,255,0.15)" : "rgba(130,255,130,0.95)";
         ctx.fill();
+
         ctx.fillStyle = "rgba(0,0,0,0.35)";
         ctx.fillRect(sx - 6, o.y - 2, 5, 10);
         ctx.fillRect(sx + 1, o.y - 8, 5, 16);
@@ -643,6 +672,7 @@
 
   function drawPlayer() {
     ctx.save();
+
     const cx = player.x + player.w / 2;
     const cy = player.y + player.h / 2;
     ctx.translate(cx, cy);
@@ -661,9 +691,9 @@
       ctx.fillStyle = "rgba(140,255,180,0.95)";
       ctx.beginPath();
       ctx.moveTo(player.x, player.y + player.h / 2);
-      ctx.lineTo(player.x + player.w * 0.8, player.y);
+      ctx.lineTo(player.x + player.w * 0.78, player.y);
       ctx.lineTo(player.x + player.w, player.y + player.h / 2);
-      ctx.lineTo(player.x + player.w * 0.8, player.y + player.h);
+      ctx.lineTo(player.x + player.w * 0.78, player.y + player.h);
       ctx.closePath();
       ctx.fill();
 
@@ -674,9 +704,9 @@
     ctx.restore();
 
     if (player.doubleJumpAvailable && player.mode === "cube") {
-      ctx.fillStyle = "rgba(130,255,130,0.9)";
       ctx.beginPath();
       ctx.arc(player.x + player.w / 2, player.y - 12, 6, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(130,255,130,0.92)";
       ctx.fill();
     }
   }
@@ -710,16 +740,12 @@
     ctx.fillRect(0, 0, W, H);
   }
 
-  let last = performance.now();
-
   function loop(t) {
     const dt = Math.min(0.033, (t - last) / 1000);
     last = t;
 
     if (state.running) update(dt);
-    if (!state.level) loadLevel(selectedLevelIndex);
     draw();
-
     requestAnimationFrame(loop);
   }
 
@@ -729,19 +755,21 @@
       pressJump();
     }
     if (e.code === "KeyR") {
-      restart();
+      restartGame();
     }
   }, { passive: false });
 
   document.addEventListener("keyup", (e) => {
-    if (e.code === "Space" || e.code === "ArrowUp") releaseJump();
+    if (e.code === "Space" || e.code === "ArrowUp") {
+      releaseJump();
+    }
   });
 
   canvas.addEventListener("pointerdown", pressJump);
   canvas.addEventListener("pointerup", releaseJump);
 
   btn.addEventListener("click", () => {
-    if (state.gameOver || state.win) restart();
+    if (state.gameOver || state.win) restartGame();
     else startGame();
   });
 
@@ -753,7 +781,7 @@
   fsBtn.addEventListener("click", async () => {
     try {
       if (!document.fullscreenElement) {
-        await canvas.requestFullscreen();
+        await document.documentElement.requestFullscreen();
       } else {
         await document.exitFullscreen();
       }
@@ -762,8 +790,7 @@
     }
   });
 
-  buildLevelList();
-  loadLevel(selectedLevelIndex);
+  resetLevel();
   showOverlay("Mini Dash+", "Choose a level and start.", "Start");
   requestAnimationFrame(loop);
 })();
