@@ -57,7 +57,7 @@ button[disabled]{opacity:.45;cursor:not-allowed;filter:none}
 }
 .hidden{display:none !important}
 .card{
-  width:min(740px,92vw);
+  width:min(780px,92vw);
   background:rgba(15,20,32,.94);
   border:1px solid rgba(255,255,255,.14);
   border-radius:18px;
@@ -84,9 +84,37 @@ button[disabled]{opacity:.45;cursor:not-allowed;filter:none}
   outline:2px solid rgba(124,255,255,.5);
   background:rgba(124,255,255,.08);
 }
-.levelItem.locked{
-  opacity:.55;
-}
+.levelItem.locked{opacity:.55}
 .levelItem .name{font-weight:700}
 .levelItem .meta{color:var(--muted);font-size:14px;margin-top:3px}
+
 .overlayButtons{display:flex;gap:10px;flex-wrap:wrap}
+
+.panelBlock{
+  margin:12px 0 16px;
+  padding:14px;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:14px;
+  background:rgba(255,255,255,.04);
+}
+.panelBlock label{
+  display:block;
+  margin:8px 0 4px;
+  color:var(--muted);
+}
+.panelBlock input,
+.panelBlock select,
+.panelBlock textarea{
+  width:100%;
+  padding:10px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.06);
+  color:var(--text);
+}
+.panelRow{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+textarea{min-height:120px;resize:vertical}
