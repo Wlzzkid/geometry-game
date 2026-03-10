@@ -21,7 +21,7 @@
 
   // physics feel (tweakable)
   const GRAVITY = 2800;
-  const JUMP_V  = 980;
+  const JUMP_V  = 500;
   const MAX_FALL = 1600;
 
   // Quality-of-life platformer tech
@@ -366,4 +366,5 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+
 })();
